@@ -15,20 +15,20 @@ typedef struct S_TASK {
     mat *a, *b, *c;
 } task;
 
-void __c_matrix(mat *mat1, mat *mat2, mat *out);
-void __matrix_multi_iterative(mat *mat1, mat *mat2, mat *out);
-void __matrix_multi_threads(mat *mat1, mat *mat2, mat *out);
-void *__worker(void *args);
-void matrix_multi(mat *mat1, mat *mat2, mat *out);
+static const int g_multithread_when_greater_than = 256;
+static const int g_num_threads = 8;
 
-static const int multithread_when_greater_than = 256;
-static const int num_threads = 8;
+static void __c_matrix(mat *mat1, mat *mat2, mat *out);
+static void __matrix_multi_iterative(mat *mat1, mat *mat2, mat *out);
+static void __matrix_multi_threads(mat *mat1, mat *mat2, mat *out);
+static void *__worker(void *args);
+void matrix_multi(mat *mat1, mat *mat2, mat *out);
 
 #endif // MATRIX_H
 
 #if defined(MATRIX_IMPLEMENTATION)
 
-void __c_matrix(mat *mat1, mat *mat2, mat *out) {
+static void __c_matrix(mat *mat1, mat *mat2, mat *out) {
     out->rows = mat1->rows;
     out->cols = mat2->cols;
     out->data = malloc(out->rows * out->cols * sizeof(int));
@@ -38,7 +38,7 @@ void __c_matrix(mat *mat1, mat *mat2, mat *out) {
     }
 }
 
-void __matrix_multi_iterative(mat *mat1, mat *mat2, mat *out) {
+static void __matrix_multi_iterative(mat *mat1, mat *mat2, mat *out) {
     for(int i = 0; i < mat1->rows; i++) {
         for(int k = 0; k < mat1->cols; k++) {
             int A = mat1->data[i * mat1->cols + k];
@@ -48,29 +48,29 @@ void __matrix_multi_iterative(mat *mat1, mat *mat2, mat *out) {
     }
 }
 
-void __matrix_multi_threads(mat *mat1, mat *mat2, mat *out) {
-    pthread_t *threads = malloc(num_threads * sizeof(pthread_t));
-    task *tasks = malloc(num_threads * sizeof(task));
+static void __matrix_multi_threads(mat *mat1, mat *mat2, mat *out) {
+    pthread_t *threads = malloc(g_num_threads * sizeof(pthread_t));
+    task *tasks = malloc(g_num_threads * sizeof(task));
 
-    int rows_per_thread = mat1->rows / num_threads;
-    for(int i = 0; i < num_threads; i++) {
+    int rows_per_thread = mat1->rows / g_num_threads;
+    for(int i = 0; i < g_num_threads; i++) {
         tasks[i].a = mat1;
         tasks[i].b = mat2;
         tasks[i].c = out;
 
         tasks[i].row_start = i * rows_per_thread;
-        tasks[i].row_end = (i == num_threads - 1) ? mat1->rows : (i + 1) * rows_per_thread;
+        tasks[i].row_end = (i == g_num_threads - 1) ? mat1->rows : (i + 1) * rows_per_thread;
 
         pthread_create(&threads[i], NULL, __worker, &tasks[i]);
     }
 
-    for(int i = 0; i < num_threads; i++) pthread_join(threads[i], NULL);
+    for(int i = 0; i < g_num_threads; i++) pthread_join(threads[i], NULL);
 
     free(threads);
     free(tasks);
 }
 
-void *__worker(void *args) {
+static void *__worker(void *args) {
     task *tasks = (task *)args;
 
     for(int i = tasks->row_start; i < tasks->row_end; i++) {
@@ -92,7 +92,7 @@ void matrix_multi(mat *mat1, mat *mat2, mat *out) {
 
     __c_matrix(mat1, mat2, out);
 
-    if(mat1->cols < multithread_when_greater_than)
+    if(mat1->cols < g_multithread_when_greater_than)
         __matrix_multi_iterative(mat1, mat2, out);
     else
         __matrix_multi_threads(mat1, mat2, out);
